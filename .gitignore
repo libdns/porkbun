@@ -1,3 +1,4 @@
 _gitignore/
 .env
 .vscode/
+.idea
