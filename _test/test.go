@@ -9,7 +9,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/libdns/libdns"
-	porkbun "github.com/libdns/porkbun"
+	"github.com/libdns/porkbun"
 )
 
 func main() {
@@ -36,17 +36,17 @@ func main() {
 	_, err := provider.CheckCredentials(context.TODO())
 
 	if err != nil {
-		log.Fatalln("Credential check failed: %s\n", err.Error())
+		log.Fatalf("Credential check failed: %s\n", err.Error())
 	}
 
 	//Get records
-	records, err := provider.GetRecords(context.TODO(), zone)
+	initialRecords, err := provider.GetRecords(context.TODO(), zone)
 	if err != nil {
-		log.Fatalln("Failed to fetch records: %s\n", err.Error())
+		log.Fatalf("Failed to fetch records: %s\n", err.Error())
 	}
 
 	log.Println("Records fetched:")
-	for _, record := range records {
+	for _, record := range initialRecords {
 		fmt.Printf("%s (.%s): %s, %s\n", record.Name, zone, record.Value, record.Type)
 	}
 
@@ -58,7 +58,7 @@ func main() {
 
 	//Create record
 	appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
-		libdns.Record{
+		{
 			Type:  recordType,
 			Name:  testFullName,
 			TTL:   ttl,
@@ -67,13 +67,24 @@ func main() {
 	})
 
 	if err != nil {
-		log.Fatalln("ERROR: %s\n", err.Error())
+		log.Fatalf("ERROR: %s\n", err.Error())
 	}
+
+	//Get records
+	postCreatedRecords, err := provider.GetRecords(context.TODO(), zone)
+	if err != nil {
+		log.Fatalf("Failed to fetch records: %s\n", err.Error())
+	}
+
+	if len(postCreatedRecords) != len(initialRecords)+1 {
+		log.Fatalln("Additional record not created")
+	}
+
 	fmt.Printf("Created record: \n%v\n", appendedRecords[0])
 
 	// Update record
 	updatedRecords, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{
-		libdns.Record{
+		{
 			Type:  recordType,
 			Name:  testFullName,
 			TTL:   ttl,
@@ -82,13 +93,23 @@ func main() {
 	})
 
 	if err != nil {
-		log.Fatalln("ERROR: %s\n", err.Error())
+		log.Fatalf("ERROR: %s\n", err.Error())
 	}
 	fmt.Printf("Updated record: \n%v\n", updatedRecords[0])
 
+	//Get records
+	updatedRecords, err = provider.GetRecords(context.TODO(), zone)
+	if err != nil {
+		log.Fatalf("Failed to fetch records: %s\n", err.Error())
+	}
+
+	if len(updatedRecords) != len(initialRecords)+1 {
+		log.Fatalln("Additional record created instead of updating existing")
+	}
+
 	// Delete record
 	deleteRecords, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{
-		libdns.Record{
+		{
 			Type: recordType,
 			Name: testFullName,
 		},
@@ -97,6 +118,17 @@ func main() {
 	if err != nil {
 		log.Fatalln("ERROR: %s\n", err.Error())
 	}
+
+	//Get records
+	updatedRecords, err = provider.GetRecords(context.TODO(), zone)
+	if err != nil {
+		log.Fatalf("Failed to fetch records: %s\n", err.Error())
+	}
+
+	if len(updatedRecords) != len(initialRecords) {
+		log.Fatalln("Additional record not cleaned up")
+	}
+
 	fmt.Printf("Deleted record: \n%v\n", deleteRecords[0])
 
 }
