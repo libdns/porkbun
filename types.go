@@ -49,27 +49,25 @@ type RecordUpdateRequest struct {
 	TTL     string `json:"ttl"`
 }
 
-var exists = struct{}{}
-
-type set struct {
-	m map[string]struct{}
+type Set struct {
+	m map[string]bool
 }
 
-func NewSet() *set {
-	s := &set{}
-	s.m = make(map[string]struct{})
+func NewSet() *Set {
+	s := &Set{}
+	s.m = make(map[string]bool)
 	return s
 }
 
-func (s *set) Add(value string) {
-	s.m[value] = exists
+func (s *Set) Add(value string) {
+	s.m[value] = true
 }
 
-func (s *set) Remove(value string) {
+func (s *Set) Remove(value string) {
 	delete(s.m, value)
 }
 
-func (s *set) Contains(value string) bool {
+func (s *Set) Contains(value string) bool {
 	_, c := s.m[value]
 	return c
 }
