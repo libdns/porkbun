@@ -48,7 +48,7 @@ func (record pkbnRecord) toLibdnsRecord(zone string) libdns.Record {
 	return libdns.Record{
 		ID:       record.ID,
 		Name:     libdns.RelativeName(record.Name, LibdnsZoneToPorkbunDomain(zone)),
-		Priority: priority,
+		Priority: uint(priority),
 		TTL:      ttl,
 		Type:     record.Type,
 		Value:    record.Content,
