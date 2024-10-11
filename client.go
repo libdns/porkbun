@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const ApiBase = "https://porkbun.com/api/json/v3"
+const ApiBase = "https://api.porkbun.com/api/json/v3"
 
 // LibdnsZoneToPorkbunDomain Strips the trailing dot from a Zone
 func LibdnsZoneToPorkbunDomain(zone string) string {
