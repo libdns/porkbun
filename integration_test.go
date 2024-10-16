@@ -44,6 +44,39 @@ func createOrGetTestRecord(t *testing.T, provider Provider, zone string) libdns.
 
 		if err != nil {
 			t.Error(err)
+			t.Fail()
+		}
+
+		if len(appendedRecords) != 1 {
+			t.Errorf("Incorrect amount of records %d created", len(appendedRecords))
+		}
+
+		testRecord = appendedRecords[0]
+	}
+
+	return testRecord
+}
+
+func createOrGetRootRecord(t *testing.T, provider Provider, zone string) libdns.Record {
+	if testRecord.ID == "" {
+		testValue := "test-value"
+		ttl := time.Duration(600 * time.Second)
+		recordType := "TXT"
+		testFullName := "@"
+
+		//Create record
+		appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
+			{
+				Type:  recordType,
+				Name:  testFullName,
+				TTL:   ttl,
+				Value: testValue,
+			},
+		})
+
+		if err != nil {
+			t.Error(err)
+			t.Fail()
 		}
 
 		if len(appendedRecords) != 1 {
@@ -107,6 +140,26 @@ func TestProvider_AppendRecords(t *testing.T) {
 	initialRecords := getInitialRecords(t, provider, zone)
 
 	createdRecord := createOrGetTestRecord(t, provider, zone)
+	//Get records
+	postCreatedRecords, err := provider.GetRecords(context.TODO(), zone)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if len(postCreatedRecords) != len(initialRecords)+1 {
+		t.Errorf("Additional record not created")
+	}
+
+	t.Logf("Created record: \n%v\n", createdRecord.ID)
+}
+
+func TestProvider_AppendRootRecord(t *testing.T) {
+	provider, zone := getProvider(t)
+
+	//Get records
+	initialRecords := getInitialRecords(t, provider, zone)
+
+	createdRecord := createOrGetRootRecord(t, provider, zone)
 	//Get records
 	postCreatedRecords, err := provider.GetRecords(context.TODO(), zone)
 	if err != nil {

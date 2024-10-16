@@ -55,7 +55,13 @@ func (p *Provider) getMatchingRecord(r libdns.Record, zone string) ([]libdns.Rec
 	if err != nil {
 		return recs, err
 	}
-	endpoint := fmt.Sprintf("/dns/retrieveByNameType/%s/%s/%s", trimmedZone, r.Type, r.Name)
+
+	trimmedName := r.Name
+	if trimmedName == "@" {
+		trimmedName = ""
+	}
+
+	endpoint := fmt.Sprintf("/dns/retrieveByNameType/%s/%s/%s", trimmedZone, r.Type, trimmedName)
 	response, err := MakeApiRequest(endpoint, bytes.NewReader(credentialJson), pkbnRecordsResponse{})
 
 	if err != nil {
