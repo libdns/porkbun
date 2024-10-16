@@ -55,7 +55,14 @@ func (p *Provider) getMatchingRecord(r libdns.Record, zone string) ([]libdns.Rec
 	if err != nil {
 		return recs, err
 	}
-	endpoint := fmt.Sprintf("/dns/retrieveByNameType/%s/%s/%s", trimmedZone, r.Type, r.Name)
+
+	relativeName := libdns.RelativeName(r.Name, zone)
+	trimmedName := relativeName
+	if relativeName == "@" {
+		trimmedName = ""
+	}
+
+	endpoint := fmt.Sprintf("/dns/retrieveByNameType/%s/%s/%s", trimmedZone, r.Type, trimmedName)
 	response, err := MakeApiRequest(endpoint, bytes.NewReader(credentialJson), pkbnRecordsResponse{})
 
 	if err != nil {
@@ -81,7 +88,11 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 			record.TTL = 600 * time.Second
 		}
 		ttlInSeconds := int(record.TTL / time.Second)
-		trimmedName := libdns.RelativeName(record.Name, zone)
+		relativeName := libdns.RelativeName(record.Name, zone)
+		trimmedName := relativeName
+		if relativeName == "@" {
+			trimmedName = ""
+		}
 
 		reqBody := pkbnRecordPayload{&credentials, record.Value, trimmedName, strconv.Itoa(ttlInSeconds), record.Type}
 		reqJson, err := json.Marshal(reqBody)
