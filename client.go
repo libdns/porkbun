@@ -56,8 +56,9 @@ func (p *Provider) getMatchingRecord(r libdns.Record, zone string) ([]libdns.Rec
 		return recs, err
 	}
 
-	trimmedName := r.Name
-	if trimmedName == "@" {
+	relativeName := libdns.RelativeName(r.Name, zone)
+	trimmedName := relativeName
+	if relativeName == "@" {
 		trimmedName = ""
 	}
 
@@ -87,7 +88,11 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 			record.TTL = 600 * time.Second
 		}
 		ttlInSeconds := int(record.TTL / time.Second)
-		trimmedName := libdns.RelativeName(record.Name, zone)
+		relativeName := libdns.RelativeName(record.Name, zone)
+		trimmedName := relativeName
+		if relativeName == "@" {
+			trimmedName = ""
+		}
 
 		reqBody := pkbnRecordPayload{&credentials, record.Value, trimmedName, strconv.Itoa(ttlInSeconds), record.Type}
 		reqJson, err := json.Marshal(reqBody)

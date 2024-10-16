@@ -58,35 +58,31 @@ func createOrGetTestRecord(t *testing.T, provider Provider, zone string) libdns.
 }
 
 func createOrGetRootRecord(t *testing.T, provider Provider, zone string) libdns.Record {
-	if testRecord.ID == "" {
-		testValue := "test-value"
-		ttl := time.Duration(600 * time.Second)
-		recordType := "TXT"
-		testFullName := "@"
+	testValue := "test-value"
+	ttl := time.Duration(600 * time.Second)
+	recordType := "CNAME"
+	testFullName := "@"
 
-		//Create record
-		appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
-			{
-				Type:  recordType,
-				Name:  testFullName,
-				TTL:   ttl,
-				Value: testValue,
-			},
-		})
+	//Create record
+	appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
+		{
+			Type:  recordType,
+			Name:  testFullName,
+			TTL:   ttl,
+			Value: testValue,
+		},
+	})
 
-		if err != nil {
-			t.Error(err)
-			t.Fail()
-		}
-
-		if len(appendedRecords) != 1 {
-			t.Errorf("Incorrect amount of records %d created", len(appendedRecords))
-		}
-
-		testRecord = appendedRecords[0]
+	if err != nil {
+		t.Error(err)
+		t.Fail()
 	}
 
-	return testRecord
+	if len(appendedRecords) != 1 {
+		t.Errorf("Incorrect amount of records %d created", len(appendedRecords))
+	}
+
+	return appendedRecords[0]
 }
 
 func getProvider(t *testing.T) (Provider, string) {
@@ -118,6 +114,7 @@ func TestProvider_CheckCredentials(t *testing.T) {
 
 	if err != nil {
 		t.Error(err)
+		t.Fatal()
 	}
 }
 
@@ -153,7 +150,7 @@ func TestProvider_AppendRecords(t *testing.T) {
 	t.Logf("Created record: \n%v\n", createdRecord.ID)
 }
 
-func TestProvider_AppendRootRecord(t *testing.T) {
+func TestProvider_ModifyRootRecord(t *testing.T) {
 	provider, zone := getProvider(t)
 
 	//Get records
@@ -171,6 +168,39 @@ func TestProvider_AppendRootRecord(t *testing.T) {
 	}
 
 	t.Logf("Created record: \n%v\n", createdRecord.ID)
+
+	updatedTestValue := "updated-test-value"
+	// Update record
+	updatedRecords, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{
+		{
+			ID:    createdRecord.ID,
+			Type:  "CNAME",
+			Name:  "@",
+			TTL:   time.Duration(600 * time.Second),
+			Value: updatedTestValue,
+		},
+	})
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	if len(updatedRecords) != 1 {
+		t.Logf("Incorrect amount of records changed")
+	}
+
+	t.Logf("Updated root record: \n%v\n", updatedRecords[0])
+
+	deleteRecords, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{createdRecord})
+	if err != nil {
+		t.Error(err)
+	}
+
+	if len(deleteRecords) != 1 {
+		t.Errorf("Deleted incorrect amount of records %d", len(deleteRecords))
+	}
+
+	t.Logf("Deleted record: \n%v\n", deleteRecords[0])
 }
 
 func TestProvider_UpdateRecordsById(t *testing.T) {
