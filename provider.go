@@ -57,7 +57,11 @@ func (p *Provider) AppendRecords(_ context.Context, zone string, records []libdn
 			record.TTL = 600 * time.Second
 		}
 		ttlInSeconds := int(record.TTL / time.Second)
-		trimmedName := libdns.RelativeName(record.Name, zone)
+		relativeName := libdns.RelativeName(record.Name, zone)
+		trimmedName := relativeName
+		if relativeName == "@" {
+			trimmedName = ""
+		}
 
 		reqBody := pkbnRecordPayload{&credentials, record.Value, trimmedName, strconv.Itoa(ttlInSeconds), record.Type}
 		reqJson, err := json.Marshal(reqBody)
