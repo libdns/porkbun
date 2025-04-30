@@ -47,35 +47,6 @@ func (p *Provider) getCredentials() ApiCredentials {
 	return ApiCredentials{p.APIKey, p.APISecretKey}
 }
 
-func (p *Provider) getMatchingRecord(r libdns.Record, zone string) ([]libdns.Record, error) {
-	var recs []libdns.Record
-	trimmedZone := LibdnsZoneToPorkbunDomain(zone)
-
-	credentialJson, err := json.Marshal(p.getCredentials())
-	if err != nil {
-		return recs, err
-	}
-
-	relativeName := libdns.RelativeName(r.Name, zone)
-	trimmedName := relativeName
-	if relativeName == "@" {
-		trimmedName = ""
-	}
-
-	endpoint := fmt.Sprintf("/dns/retrieveByNameType/%s/%s/%s", trimmedZone, r.Type, trimmedName)
-	response, err := MakeApiRequest(endpoint, bytes.NewReader(credentialJson), pkbnRecordsResponse{})
-
-	if err != nil {
-		return recs, err
-	}
-
-	recs = make([]libdns.Record, 0, len(response.Records))
-	for _, rec := range response.Records {
-		recs = append(recs, rec.toLibdnsRecord(zone))
-	}
-	return recs, nil
-}
-
 // UpdateRecords adds records to the zone. It returns the records that were added.
 func (p *Provider) updateRecords(_ context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
 	credentials := p.getCredentials()
@@ -84,22 +55,23 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 	var createdRecords []libdns.Record
 
 	for _, record := range records {
-		if record.TTL/time.Second < 600 {
-			record.TTL = 600 * time.Second
+		rr := record.RR()
+		if rr.TTL/time.Second < 600 {
+			rr.TTL = 600 * time.Second
 		}
-		ttlInSeconds := int(record.TTL / time.Second)
-		relativeName := libdns.RelativeName(record.Name, zone)
+		ttlInSeconds := int(rr.TTL / time.Second)
+		relativeName := libdns.RelativeName(rr.Name, zone)
 		trimmedName := relativeName
 		if relativeName == "@" {
 			trimmedName = ""
 		}
 
-		reqBody := pkbnRecordPayload{&credentials, record.Value, trimmedName, strconv.Itoa(ttlInSeconds), record.Type}
+		reqBody := pkbnRecordPayload{&credentials, rr.Data, trimmedName, strconv.Itoa(ttlInSeconds), rr.Type}
 		reqJson, err := json.Marshal(reqBody)
 		if err != nil {
 			return nil, err
 		}
-		response, err := MakeApiRequest(fmt.Sprintf("/dns/edit/%s/%s", trimmedZone, record.ID), bytes.NewReader(reqJson), pkbnResponseStatus{})
+		response, err := MakeApiRequest(fmt.Sprintf("/dns/editByNameType/%s/%s/%s", trimmedZone, record.RR().Type, trimmedName), bytes.NewReader(reqJson), pkbnResponseStatus{})
 		if err != nil {
 			return nil, err
 		}

@@ -2,14 +2,16 @@ package porkbun
 
 import (
 	"fmt"
-	"github.com/libdns/libdns"
+	"net/netip"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/libdns/libdns"
 )
 
 type pkbnRecord struct {
 	Content string `json:"content"`
-	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Notes   string `json:"notes"`
 	Prio    string `json:"prio"`
@@ -38,20 +40,67 @@ type pkbnPingResponse struct {
 
 type pkbnCreateResponse struct {
 	pkbnResponseStatus
-	// TODO contact support endpoint isn't returning the ID despite it being in their docs.
-	// ID string `json:"id"`
 }
 
-func (record pkbnRecord) toLibdnsRecord(zone string) libdns.Record {
-	ttl, _ := time.ParseDuration(record.TTL + "s")
-	priority, _ := strconv.Atoi(record.Prio)
-	return libdns.Record{
-		ID:       record.ID,
-		Name:     libdns.RelativeName(record.Name, LibdnsZoneToPorkbunDomain(zone)),
-		Priority: uint(priority),
-		TTL:      ttl,
-		Type:     record.Type,
-		Value:    record.Content,
+func (record pkbnRecord) toLibdnsRecord(zone string) (libdns.Record, error) {
+	name := libdns.RelativeName(record.Name, zone)
+	ttl, err := time.ParseDuration(record.TTL + "s")
+	if err != nil {
+		return libdns.RR{}, err
+	}
+
+	switch record.Type {
+	case "A", "AAAA":
+		ip, err := netip.ParseAddr(record.Content)
+		if err != nil {
+			return libdns.Address{}, err
+		}
+		return libdns.Address{
+			Name: name,
+			TTL:  ttl,
+			IP:   ip,
+		}, nil
+	case "CAA":
+		contentParts := strings.SplitN(record.Content, " ", 3)
+		flags, err := strconv.Atoi(contentParts[0])
+		if err != nil {
+			return libdns.CAA{}, err
+		}
+		tag := contentParts[1]
+		value := contentParts[2]
+		return libdns.CAA{
+			Name:  name,
+			TTL:   ttl,
+			Flags: uint8(flags),
+			Tag:   tag,
+			Value: value,
+		}, nil
+	case "CNAME":
+		return libdns.CNAME{
+			Name:   name,
+			TTL:    ttl,
+			Target: record.Content,
+		}, nil
+	case "SRV":
+		priority, err := strconv.Atoi(record.Prio)
+		return libdns.SRV{
+			Service:   "",
+			Transport: "",
+			Name:      name,
+			TTL:       ttl,
+			Priority:  uint16(priority),
+			Weight:    0,
+			Port:      0,
+			Target:    "",
+		}, err
+	case "TXT":
+		return libdns.TXT{
+			Name: name,
+			TTL:  ttl,
+			Text: record.Content,
+		}, err
+	default:
+		return libdns.RR{}, fmt.Errorf("Unsupported record type: %s", record.Type)
 	}
 }
 
