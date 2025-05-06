@@ -83,16 +83,36 @@ func (record pkbnRecord) toLibdnsRecord(zone string) (libdns.Record, error) {
 		}, nil
 	case "SRV":
 		priority, err := strconv.Atoi(record.Prio)
+		if err != nil {
+			return libdns.SRV{}, fmt.Errorf("invalid value for priority %v; expected format: '0'", record.Prio)
+		}
+		nameParts := strings.SplitN(name, ".", 2)
+		if len(nameParts) < 2 {
+			return libdns.SRV{}, fmt.Errorf("name %v does not contain enough fields; expected format: '_service._proto'", name)
+		}
+		contentParts := strings.SplitN(record.Content, " ", 3)
+		if len(contentParts) < 3 {
+			return libdns.SRV{}, fmt.Errorf("content %v does not contain enough fields; expected format: 'weight port target'", name)
+		}
+		weight, err := strconv.Atoi(contentParts[0])
+		if err != nil {
+			return libdns.SRV{}, fmt.Errorf("invalid value for weight %v; expected integer", record.Prio)
+		}
+		port, err := strconv.Atoi(contentParts[1])
+		if err != nil {
+			return libdns.SRV{}, fmt.Errorf("invalid value for port %v; expected integer", record.Prio)
+		}
+
 		return libdns.SRV{
-			Service:   "",
-			Transport: "",
-			Name:      name,
+			Service:   strings.TrimPrefix(nameParts[0], "_"),
+			Transport: strings.TrimPrefix(nameParts[1], "_"),
+			Name:      zone,
 			TTL:       ttl,
 			Priority:  uint16(priority),
-			Weight:    0,
-			Port:      0,
-			Target:    "",
-		}, err
+			Weight:    uint16(weight),
+			Port:      uint16(port),
+			Target:    contentParts[2],
+		}, nil
 	case "TXT":
 		return libdns.TXT{
 			Name: name,
