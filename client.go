@@ -11,9 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
-	"time"
 )
 
 const ApiBase = "https://api.porkbun.com/api/json/v3"
