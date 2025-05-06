@@ -61,8 +61,7 @@ func (p *Provider) AppendRecords(_ context.Context, zone string, records []libdn
 			rr.TTL = 600 * time.Second
 		}
 		ttlInSeconds := int(rr.TTL / time.Second)
-		relativeName := libdns.RelativeName(rr.Name, zone)
-		trimmedName := CorrectRootName(relativeName)
+		trimmedName := LibdnsNameToPorkbunName(rr.Name, zone)
 
 		reqBody := pkbnRecordPayload{&credentials, rr.Data, trimmedName, strconv.Itoa(ttlInSeconds), rr.Type}
 		reqJson, err := json.Marshal(reqBody)
@@ -128,7 +127,7 @@ func (p *Provider) DeleteRecords(_ context.Context, zone string, records []libdn
 
 		for _, recordToDelete := range queuedDeletes {
 			rr := recordToDelete.RR()
-			trimmedName := CorrectRootName(rr.Name)
+			trimmedName := LibdnsNameToPorkbunName(rr.Name, zone)
 			_, err = MakeApiRequest(fmt.Sprintf("/dns/deleteByNameType/%s/%s/%s", trimmedZone, rr.Type, trimmedName), bytes.NewReader(reqJson), pkbnResponseStatus{})
 			if err != nil {
 				return deletedRecords, err

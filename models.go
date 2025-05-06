@@ -130,8 +130,7 @@ func porkbunRecordPayload(record libdns.Record, credentials *ApiCredentials, zon
 		rr.TTL = 600 * time.Second
 	}
 	ttlInSeconds := int(rr.TTL / time.Second)
-	relativeName := libdns.RelativeName(rr.Name, zone)
-	trimmedName := CorrectRootName(relativeName)
+	trimmedName := LibdnsNameToPorkbunName(rr.Name, zone)
 	var data string
 	switch rec := record.(type) {
 	case libdns.SRV:

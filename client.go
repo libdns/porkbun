@@ -23,12 +23,13 @@ func LibdnsZoneToPorkbunDomain(zone string) string {
 	return strings.TrimSuffix(zone, ".")
 }
 
-// Converts libdns' root name representation to porkbun's
-func CorrectRootName(name string) string {
-	if name == "@" {
+// Converts libdns' name representation to porkbun's
+func LibdnsNameToPorkbunName(name string, zone string) string {
+	relativeName := libdns.RelativeName(name, zone)
+	if relativeName == "@" {
 		return ""
 	} else {
-		return name
+		return relativeName
 	}
 }
 
@@ -64,8 +65,7 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 	var createdRecords []libdns.Record
 
 	for _, record := range records {
-		relativeName := libdns.RelativeName(record.RR().Name, zone)
-		trimmedName := CorrectRootName(relativeName)
+		trimmedName := LibdnsNameToPorkbunName(record.RR().Name, zone)
 		reqBody, err := porkbunRecordPayload(record, &credentials, zone)
 		reqJson, err := json.Marshal(reqBody)
 		if err != nil {
