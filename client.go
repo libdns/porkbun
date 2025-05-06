@@ -64,15 +64,9 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 	var createdRecords []libdns.Record
 
 	for _, record := range records {
-		rr := record.RR()
-		if rr.TTL/time.Second < 600 {
-			rr.TTL = 600 * time.Second
-		}
-		ttlInSeconds := int(rr.TTL / time.Second)
-		relativeName := libdns.RelativeName(rr.Name, zone)
+		relativeName := libdns.RelativeName(record.RR().Name, zone)
 		trimmedName := CorrectRootName(relativeName)
-
-		reqBody := pkbnRecordPayload{&credentials, rr.Data, trimmedName, strconv.Itoa(ttlInSeconds), rr.Type}
+		reqBody, err := porkbunRecordPayload(record, &credentials, zone)
 		reqJson, err := json.Marshal(reqBody)
 		if err != nil {
 			return nil, err

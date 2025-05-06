@@ -124,6 +124,26 @@ func (record pkbnRecord) toLibdnsRecord(zone string) (libdns.Record, error) {
 	}
 }
 
+func porkbunRecordPayload(record libdns.Record, credentials *ApiCredentials, zone string) (pkbnRecordPayload, error) {
+	rr := record.RR()
+	if rr.TTL/time.Second < 600 {
+		rr.TTL = 600 * time.Second
+	}
+	ttlInSeconds := int(rr.TTL / time.Second)
+	relativeName := libdns.RelativeName(rr.Name, zone)
+	trimmedName := CorrectRootName(relativeName)
+	var data string
+	switch rec := record.(type) {
+	case libdns.SRV:
+		trimmedName = fmt.Sprintf("_%s._%s.%s", rec.Service, rec.Transport, rec.Name)
+		data = fmt.Sprintf("%d %d %s", rec.Weight, rec.Port, rec.Target)
+	default:
+		data = rr.Data
+	}
+
+	return pkbnRecordPayload{credentials, data, trimmedName, strconv.Itoa(ttlInSeconds), rr.Type}, nil
+}
+
 func (a pkbnResponseStatus) Error() string {
 	return fmt.Sprintf("%s: %s", a.Status, a.Message)
 }
