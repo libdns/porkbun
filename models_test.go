@@ -89,13 +89,13 @@ func TestPorkbunRecord_ToLibdnsRecord(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s %s", tc.porkbunRecord.Type, tc.want.RR().Name), func(t *testing.T) {
 			var err error
-			switch tc.want.(type) {
+			switch want := tc.want.(type) {
 			case libdns.Address:
-				err = equalsAddress(tc.porkbunRecord, tc.want.(libdns.Address))
+				err = equalsAddress(tc.porkbunRecord, want)
 			case libdns.CNAME:
-				err = equalsCNAME(tc.porkbunRecord, tc.want.(libdns.CNAME))
+				err = equalsCNAME(tc.porkbunRecord, want)
 			case libdns.SRV:
-				err = equalsSRV(tc.porkbunRecord, tc.want.(libdns.SRV))
+				err = equalsSRV(tc.porkbunRecord, want)
 			default:
 				err = fmt.Errorf("unhandled record type: %s", tc.porkbunRecord.Type)
 			}
