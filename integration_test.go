@@ -33,6 +33,18 @@ func createOrGetTestRecord(t *testing.T, provider Provider, zone string) (*libdn
 		ttl := time.Duration(600 * time.Second)
 		testFullName := "libdns_test_record"
 
+		records, err := provider.GetRecords(context.TODO(), zone)
+		if err != nil {
+			t.Error(err)
+			t.Fail()
+		}
+		for _, rec := range records {
+			if rec.RR().Name == "libdns_test_record" {
+				testRecord = &rec
+				return testRecord, nil
+			}
+		}
+
 		//Create record
 		appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
 			libdns.TXT{
