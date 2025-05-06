@@ -23,6 +23,15 @@ func LibdnsZoneToPorkbunDomain(zone string) string {
 	return strings.TrimSuffix(zone, ".")
 }
 
+// Converts libdns' root name representation to porkbun's
+func CorrectRootName(name string) string {
+	if name == "@" {
+		return ""
+	} else {
+		return name
+	}
+}
+
 // CheckCredentials allows verifying credentials work in test scripts
 func (p *Provider) CheckCredentials(_ context.Context) (string, error) {
 	credentialJson, err := json.Marshal(p.getCredentials())
@@ -61,10 +70,7 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 		}
 		ttlInSeconds := int(rr.TTL / time.Second)
 		relativeName := libdns.RelativeName(rr.Name, zone)
-		trimmedName := relativeName
-		if relativeName == "@" {
-			trimmedName = ""
-		}
+		trimmedName := CorrectRootName(relativeName)
 
 		reqBody := pkbnRecordPayload{&credentials, rr.Data, trimmedName, strconv.Itoa(ttlInSeconds), rr.Type}
 		reqJson, err := json.Marshal(reqBody)
