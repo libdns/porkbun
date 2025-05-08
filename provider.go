@@ -40,7 +40,10 @@ func (p *Provider) GetRecords(_ context.Context, zone string) ([]libdns.Record, 
 
 	recs := make([]libdns.Record, 0, len(response.Records))
 	for _, rec := range response.Records {
-		recs = append(recs, rec.toLibdnsRecord(zone))
+		libdnsRec, err := rec.toLibdnsRecord(zone)
+		if err == nil {
+			recs = append(recs, libdnsRec)
+		}
 	}
 	return recs, nil
 }
@@ -53,17 +56,14 @@ func (p *Provider) AppendRecords(_ context.Context, zone string, records []libdn
 	var createdRecords []libdns.Record
 
 	for _, record := range records {
-		if record.TTL/time.Second < 600 {
-			record.TTL = 600 * time.Second
+		rr := record.RR()
+		if rr.TTL/time.Second < 600 {
+			rr.TTL = 600 * time.Second
 		}
-		ttlInSeconds := int(record.TTL / time.Second)
-		relativeName := libdns.RelativeName(record.Name, zone)
-		trimmedName := relativeName
-		if relativeName == "@" {
-			trimmedName = ""
-		}
+		ttlInSeconds := int(rr.TTL / time.Second)
+		trimmedName := LibdnsNameToPorkbunName(rr.Name, zone)
 
-		reqBody := pkbnRecordPayload{&credentials, record.Value, trimmedName, strconv.Itoa(ttlInSeconds), record.Type}
+		reqBody := pkbnRecordPayload{&credentials, rr.Data, trimmedName, strconv.Itoa(ttlInSeconds), rr.Type}
 		reqJson, err := json.Marshal(reqBody)
 		if err != nil {
 			return createdRecords, err
@@ -79,11 +79,6 @@ func (p *Provider) AppendRecords(_ context.Context, zone string, records []libdn
 			return createdRecords, errors.New(fmt.Sprintf("Invalid response status %s", response.Status))
 		}
 
-		// TODO contact support endpoint isn't returning the ID despite it being in their docs. Fetch as a workaround
-		created, err := p.getMatchingRecord(record, zone)
-		if err == nil && len(created) == 1 {
-			record.ID = created[0].ID
-		}
 		createdRecords = append(createdRecords, record)
 	}
 
@@ -97,27 +92,7 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 	var creates []libdns.Record
 	var results []libdns.Record
 	for _, r := range records {
-		if r.ID == "" {
-			// Try fetch record in case we are just missing the ID
-			matches, err := p.getMatchingRecord(r, zone)
-			if err != nil {
-				return nil, err
-			}
-
-			if len(matches) == 0 {
-				creates = append(creates, r)
-				continue
-			}
-
-			if len(matches) > 1 {
-				return nil, fmt.Errorf("unexpectedly found more than 1 record for %v", r)
-			}
-
-			r.ID = matches[0].ID
-			updates = append(updates, r)
-		} else {
-			updates = append(updates, r)
-		}
+		updates = append(updates, r)
 	}
 
 	created, err := p.AppendRecords(ctx, zone, creates)
@@ -143,18 +118,7 @@ func (p *Provider) DeleteRecords(_ context.Context, zone string, records []libdn
 
 	for _, record := range records {
 		var queuedDeletes []libdns.Record
-		if record.ID == "" {
-			// Try fetch record in case we are just missing the ID
-			matches, err := p.getMatchingRecord(record, zone)
-			if err != nil {
-				return deletedRecords, err
-			}
-			for _, rec := range matches {
-				queuedDeletes = append(queuedDeletes, rec)
-			}
-		} else {
-			queuedDeletes = append(queuedDeletes, record)
-		}
+		queuedDeletes = append(queuedDeletes, record)
 
 		reqJson, err := json.Marshal(credentials)
 		if err != nil {
@@ -162,7 +126,9 @@ func (p *Provider) DeleteRecords(_ context.Context, zone string, records []libdn
 		}
 
 		for _, recordToDelete := range queuedDeletes {
-			_, err = MakeApiRequest(fmt.Sprintf("/dns/delete/%s/%s", trimmedZone, recordToDelete.ID), bytes.NewReader(reqJson), pkbnResponseStatus{})
+			rr := recordToDelete.RR()
+			trimmedName := LibdnsNameToPorkbunName(rr.Name, zone)
+			_, err = MakeApiRequest(fmt.Sprintf("/dns/deleteByNameType/%s/%s/%s", trimmedZone, rr.Type, trimmedName), bytes.NewReader(reqJson), pkbnResponseStatus{})
 			if err != nil {
 				return deletedRecords, err
 			}

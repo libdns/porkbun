@@ -2,16 +2,18 @@ package porkbun
 
 import (
 	"context"
-	"github.com/joho/godotenv"
-	"github.com/libdns/libdns"
+	"fmt"
 	"log"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/joho/godotenv"
+	"github.com/libdns/libdns"
 )
 
 var records []libdns.Record
-var testRecord libdns.Record
+var testRecord *libdns.Record
 
 func getInitialRecords(t *testing.T, provider Provider, zone string) []libdns.Record {
 	if len(records) == 0 {
@@ -25,51 +27,62 @@ func getInitialRecords(t *testing.T, provider Provider, zone string) []libdns.Re
 	return records
 }
 
-func createOrGetTestRecord(t *testing.T, provider Provider, zone string) libdns.Record {
-	if testRecord.ID == "" {
+func createOrGetTestRecord(t *testing.T, provider Provider, zone string) (*libdns.Record, error) {
+	if testRecord == nil {
 		testValue := "test-value"
 		ttl := time.Duration(600 * time.Second)
-		recordType := "TXT"
 		testFullName := "libdns_test_record"
+
+		records, err := provider.GetRecords(context.TODO(), zone)
+		if err != nil {
+			t.Error(err)
+			t.Fail()
+		}
+		for _, rec := range records {
+			if rec.RR().Name == "libdns_test_record" {
+				testRecord = &rec
+				return testRecord, nil
+			}
+		}
 
 		//Create record
 		appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
-			{
-				Type:  recordType,
-				Name:  testFullName,
-				TTL:   ttl,
-				Value: testValue,
+			libdns.TXT{
+				Name: testFullName,
+				TTL:  ttl,
+				Text: testValue,
 			},
 		})
 
 		if err != nil {
 			t.Error(err)
 			t.Fail()
+			return nil, err
 		}
 
 		if len(appendedRecords) != 1 {
-			t.Errorf("Incorrect amount of records %d created", len(appendedRecords))
+			err = fmt.Errorf("Incorrect amount of records %d created", len(appendedRecords))
+			t.Error(err)
+			return nil, err
+		} else {
+			testRecord = &appendedRecords[0]
 		}
-
-		testRecord = appendedRecords[0]
 	}
 
-	return testRecord
+	return testRecord, nil
 }
 
 func createOrGetRootRecord(t *testing.T, provider Provider, zone string) libdns.Record {
 	testValue := "test-value"
 	ttl := time.Duration(600 * time.Second)
-	recordType := "CNAME"
 	testFullName := "@"
 
 	//Create record
 	appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
-		{
-			Type:  recordType,
-			Name:  testFullName,
-			TTL:   ttl,
-			Value: testValue,
+		libdns.CNAME{
+			Name:   testFullName,
+			TTL:    ttl,
+			Target: testValue,
 		},
 	})
 
@@ -126,7 +139,8 @@ func TestProvider_GetRecords(t *testing.T) {
 
 	log.Println("Records fetched:")
 	for _, record := range initialRecords {
-		t.Logf("%s %s (.%s): %s, %s\n", record.ID, record.Name, zone, record.Value, record.Type)
+		rr := record.RR()
+		t.Logf("%s (.%s): %s, %s\n", rr.Name, zone, rr.Data, rr.Type)
 	}
 }
 
@@ -136,7 +150,11 @@ func TestProvider_AppendRecords(t *testing.T) {
 	//Get records
 	initialRecords := getInitialRecords(t, provider, zone)
 
-	createdRecord := createOrGetTestRecord(t, provider, zone)
+	createdRecord, err := createOrGetTestRecord(t, provider, zone)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	//Get records
 	postCreatedRecords, err := provider.GetRecords(context.TODO(), zone)
 	if err != nil {
@@ -144,10 +162,10 @@ func TestProvider_AppendRecords(t *testing.T) {
 	}
 
 	if len(postCreatedRecords) != len(initialRecords)+1 {
-		t.Errorf("Additional record not created")
+		t.Errorf("Additional record not created. got: %d, wanted: %d\n", len(postCreatedRecords), len(initialRecords)+1)
 	}
 
-	t.Logf("Created record: \n%v\n", createdRecord.ID)
+	t.Logf("Created record: \n%v\n", createdRecord)
 }
 
 func TestProvider_ModifyRootRecord(t *testing.T) {
@@ -167,19 +185,18 @@ func TestProvider_ModifyRootRecord(t *testing.T) {
 		t.Errorf("Additional record not created")
 	}
 
-	t.Logf("Created record: \n%v\n", createdRecord.ID)
+	t.Logf("Created record: \n%v\n", createdRecord)
 
 	updatedTestValue := "updated-test-value"
 	// Update record
-	updatedRecords, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{
-		{
-			ID:    createdRecord.ID,
-			Type:  "CNAME",
-			Name:  "@",
-			TTL:   time.Duration(600 * time.Second),
-			Value: updatedTestValue,
+	records := []libdns.Record{
+		libdns.CNAME{
+			Name:   "@",
+			TTL:    time.Duration(600 * time.Second),
+			Target: updatedTestValue,
 		},
-	})
+	}
+	updatedRecords, err := provider.SetRecords(context.TODO(), zone, records)
 
 	if err != nil {
 		t.Error(err)
@@ -210,21 +227,22 @@ func TestProvider_UpdateRecordsById(t *testing.T) {
 	initialRecords := getInitialRecords(t, provider, zone)
 
 	ttl := time.Duration(600 * time.Second)
-	recordType := "TXT"
 	testFullName := "libdns_test_record"
 
 	//Create record
-	createdRecord := createOrGetTestRecord(t, provider, zone)
+	_, err := createOrGetTestRecord(t, provider, zone)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	updatedTestValue := "updated-test-value"
 	// Update record
 	updatedRecords, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{
-		{
-			ID:    createdRecord.ID,
-			Type:  recordType,
-			Name:  testFullName,
-			TTL:   ttl,
-			Value: updatedTestValue,
+		libdns.TXT{
+			Name: testFullName,
+			TTL:  ttl,
+			Text: updatedTestValue,
 		},
 	})
 
@@ -256,20 +274,22 @@ func TestProvider_UpdateRecordsByLookup(t *testing.T) {
 	initialRecords := getInitialRecords(t, provider, zone)
 
 	ttl := time.Duration(600 * time.Second)
-	recordType := "TXT"
 	testFullName := "libdns_test_record"
 
 	//Create record
-	_ = createOrGetTestRecord(t, provider, zone)
+	_, err := createOrGetTestRecord(t, provider, zone)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	updatedTestValue := "updated-test-value-by-lookup"
 	// Update record
 	updatedRecords, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{
-		{
-			Type:  recordType,
-			Name:  testFullName,
-			TTL:   ttl,
-			Value: updatedTestValue,
+		libdns.TXT{
+			Name: testFullName,
+			TTL:  ttl,
+			Text: updatedTestValue,
 		},
 	})
 
@@ -298,10 +318,15 @@ func TestProvider_DeleteRecords(t *testing.T) {
 	provider, zone := getProvider(t)
 
 	//Create record
-	createdRecord := createOrGetTestRecord(t, provider, zone)
+	createdRecord, err := createOrGetTestRecord(t, provider, zone)
+
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	// Delete record
-	deleteRecords, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{createdRecord})
+	deleteRecords, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{*createdRecord})
 
 	if err != nil {
 		t.Error(err)
