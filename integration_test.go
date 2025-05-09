@@ -121,6 +121,7 @@ func TestProvider_SetRecords(t *testing.T) {
 	}
 
 	_, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{testCases[0], testCases[1]})
+	_, _ = provider.DeleteRecords(context.TODO(), zone, []libdns.Record{testCases[2], testCases[3]})
 
 	if err != nil {
 		t.Fatal(err)
