@@ -75,7 +75,9 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 		}
 
 		if response.Status != "SUCCESS" {
-			return nil, err
+			return nil, fmt.Errorf(
+				"invalid response status %s %s", response.Status, response.Message,
+			)
 		}
 		createdRecords = append(createdRecords, record)
 	}
@@ -109,7 +111,7 @@ func MakeApiRequest[T any](endpoint string, body io.Reader, responseType T) (T, 
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		err = errors.New("Invalid http response status, " + string(bodyBytes))
+		err = errors.New("Invalid http response status, " + string(bodyBytes) + " for endpoint " + endpoint)
 		return responseType, err
 	}
 
