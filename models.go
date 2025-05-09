@@ -10,6 +10,18 @@ import (
 	"github.com/libdns/libdns"
 )
 
+type pkbnDomain struct {
+	Domain       string `json:"domain"`
+	Status       string `json:"status"`
+	TLD          string `json:"tld"`
+	CreateDate   string `json:"createDate"`
+	ExpireDate   string `json:"expireDate"`
+	SecurityLock string `json:"securityLock"`
+	WhoisPrivacy string `json:"whoisPrivacy"`
+	AutoRenew    string `json:"autoRenew"`
+	NotLocal     int    `json:"notLocal"`
+}
+
 type pkbnRecord struct {
 	Content string `json:"content"`
 	Name    string `json:"name"`
@@ -32,6 +44,11 @@ type ApiCredentials struct {
 type pkbnResponseStatus struct {
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
+}
+
+type pkbnDomainResponse struct {
+	Status  string       `json:"status"`
+	Domains []pkbnDomain `json:"domains"`
 }
 type pkbnPingResponse struct {
 	pkbnResponseStatus
