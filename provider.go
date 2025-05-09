@@ -91,8 +91,29 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 	var updates []libdns.Record
 	var creates []libdns.Record
 	var results []libdns.Record
+	existingRecords, err := p.GetRecords(ctx, zone)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, r := range records {
-		updates = append(updates, r)
+		var found libdns.Record = nil
+		for _, existingRecord := range existingRecords {
+			if existingRecord.RR().Name == r.RR().Name && existingRecord.RR().Type == r.RR().Type {
+				found = existingRecord
+				break
+			}
+		}
+
+		if found != nil {
+			if found.RR() != r.RR() {
+				updates = append(updates, r)
+			} else {
+				results = append(results, found)
+			}
+		} else {
+			creates = append(creates, r)
+		}
 	}
 
 	created, err := p.AppendRecords(ctx, zone, creates)

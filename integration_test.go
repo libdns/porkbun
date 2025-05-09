@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/netip"
 	"os"
 	"testing"
 	"time"
@@ -12,328 +13,229 @@ import (
 	"github.com/libdns/libdns"
 )
 
-var records []libdns.Record
-var testRecord *libdns.Record
-
-func getInitialRecords(t *testing.T, provider Provider, zone string) []libdns.Record {
-	if len(records) == 0 {
-		fetchedRecords, err := provider.GetRecords(context.TODO(), zone)
-		if err != nil {
-			t.Error(err)
-		}
-		records = fetchedRecords
+func updateRecordTTL(record libdns.Record, newTTL time.Duration) (libdns.Record, error) {
+	// Create a copy of the record with new TTL
+	switch r := record.(type) {
+	case libdns.TXT:
+		return libdns.TXT{
+			Name: r.Name,
+			TTL:  newTTL,
+			Text: r.Text,
+		}, nil
+	case libdns.Address:
+		return libdns.Address{
+			Name: r.Name,
+			TTL:  newTTL,
+			IP:   r.IP,
+		}, nil
 	}
 
-	return records
-}
+	return nil, fmt.Errorf("unsupported DNS record type: %T", record)
 
-func createOrGetTestRecord(t *testing.T, provider Provider, zone string) (*libdns.Record, error) {
-	if testRecord == nil {
-		testValue := "test-value"
-		ttl := time.Duration(600 * time.Second)
-		testFullName := "libdns_test_record"
-
-		records, err := provider.GetRecords(context.TODO(), zone)
-		if err != nil {
-			t.Error(err)
-			t.Fail()
-		}
-		for _, rec := range records {
-			if rec.RR().Name == "libdns_test_record" {
-				testRecord = &rec
-				return testRecord, nil
-			}
-		}
-
-		//Create record
-		appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
-			libdns.TXT{
-				Name: testFullName,
-				TTL:  ttl,
-				Text: testValue,
-			},
-		})
-
-		if err != nil {
-			t.Error(err)
-			t.Fail()
-			return nil, err
-		}
-
-		if len(appendedRecords) != 1 {
-			err = fmt.Errorf("Incorrect amount of records %d created", len(appendedRecords))
-			t.Error(err)
-			return nil, err
-		} else {
-			testRecord = &appendedRecords[0]
-		}
-	}
-
-	return testRecord, nil
-}
-
-func createOrGetRootRecord(t *testing.T, provider Provider, zone string) libdns.Record {
-	testValue := "test-value"
-	ttl := time.Duration(600 * time.Second)
-	testFullName := "@"
-
-	//Create record
-	appendedRecords, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{
-		libdns.CNAME{
-			Name:   testFullName,
-			TTL:    ttl,
-			Target: testValue,
-		},
-	})
-
-	if err != nil {
-		t.Error(err)
-		t.Fail()
-	}
-
-	if len(appendedRecords) != 1 {
-		t.Errorf("Incorrect amount of records %d created", len(appendedRecords))
-	}
-
-	return appendedRecords[0]
 }
 
 func getProvider(t *testing.T) (Provider, string) {
 	envErr := godotenv.Load()
 	if envErr != nil {
-		t.Error(envErr)
+		t.Fatal(envErr)
 	}
 
 	apikey := os.Getenv("PORKBUN_API_KEY")
-	secretapikey := os.Getenv("PORKBUN_SECRET_API_KEY")
+	secretApiKey := os.Getenv("PORKBUN_SECRET_API_KEY")
 	zone := os.Getenv("ZONE")
 
-	if apikey == "" || secretapikey == "" || zone == "" {
-		t.Errorf("All variables must be set in '.env' file")
+	if apikey == "" || secretApiKey == "" || zone == "" {
+		t.Fatal("All variables must be set in '.env' file")
 	}
 
 	provider := Provider{
 		APIKey:       apikey,
-		APISecretKey: secretapikey,
+		APISecretKey: secretApiKey,
 	}
+
 	return provider, zone
 }
 
 func TestProvider_CheckCredentials(t *testing.T) {
 	provider, _ := getProvider(t)
-
 	//Check Authorization
 	_, err := provider.CheckCredentials(context.TODO())
 
 	if err != nil {
-		t.Error(err)
-		t.Fatal()
+		t.Fatal(err)
 	}
 }
 
 func TestProvider_GetRecords(t *testing.T) {
 	provider, zone := getProvider(t)
+	records, err := provider.GetRecords(context.TODO(), zone)
 
-	//Get records
-	initialRecords := getInitialRecords(t, provider, zone)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	log.Println("Records fetched:")
-	for _, record := range initialRecords {
+	for _, record := range records {
 		rr := record.RR()
 		t.Logf("%s (.%s): %s, %s\n", rr.Name, zone, rr.Data, rr.Type)
 	}
 }
 
+func TestProvider_SetRecords(t *testing.T) {
+	provider, zone := getProvider(t)
+	modifyRoot := os.Getenv("MODIFY_ROOT") == "true"
+
+	initialTtl := 600 * time.Second
+	expectedTtl := 900 * time.Second
+	testCases := []libdns.Record{
+		libdns.TXT{
+			Name: "libdns.set-sub",
+			TTL:  initialTtl,
+			Text: "libdns_test_modify_sub_txt",
+		},
+		libdns.Address{
+			Name: "libdns-set-address",
+			TTL:  initialTtl,
+			IP:   netip.MustParseAddr("1.1.1.1"),
+		},
+		libdns.TXT{
+			Name: "libdns.set-sub-new",
+			TTL:  initialTtl,
+			Text: "libdns_test_modify_sub_new_txt",
+		},
+		libdns.Address{
+			Name: "libdns-set-address-new",
+			TTL:  initialTtl,
+			IP:   netip.MustParseAddr("1.1.1.1"),
+		},
+	}
+
+	if modifyRoot {
+		testCases = append(testCases, libdns.TXT{
+			Name: "@",
+			TTL:  initialTtl,
+			Text: "libdns_test_modify_root_txt",
+		})
+	} else {
+		t.Log("Skipping root record modification")
+	}
+
+	_, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{testCases[0], testCases[1]})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, expectedRecord := range testCases {
+		t.Run(expectedRecord.RR().Type+" "+expectedRecord.RR().Name, func(t *testing.T) {
+			if index > 0 {
+				time.Sleep(1 * time.Second)
+			}
+
+			updatedRecord, err := updateRecordTTL(expectedRecord, expectedTtl)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			records, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{updatedRecord})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(records) != 1 {
+				t.Fatal("Incorrect amount of records created")
+			}
+
+			if records[0].RR().TTL != expectedTtl {
+				t.Fatalf("Incorrect TTL. Wanted %v, got %v", expectedTtl, records[0].RR().TTL)
+			}
+
+			t.Logf("Set record ttl")
+		})
+	}
+}
+
 func TestProvider_AppendRecords(t *testing.T) {
 	provider, zone := getProvider(t)
+	modifyRoot := os.Getenv("MODIFY_ROOT") == "true"
 
-	//Get records
-	initialRecords := getInitialRecords(t, provider, zone)
-
-	createdRecord, err := createOrGetTestRecord(t, provider, zone)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	//Get records
-	postCreatedRecords, err := provider.GetRecords(context.TODO(), zone)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if len(postCreatedRecords) != len(initialRecords)+1 {
-		t.Errorf("Additional record not created. got: %d, wanted: %d\n", len(postCreatedRecords), len(initialRecords)+1)
-	}
-
-	t.Logf("Created record: \n%v\n", createdRecord)
-}
-
-func TestProvider_ModifyRootRecord(t *testing.T) {
-	provider, zone := getProvider(t)
-
-	//Get records
-	initialRecords := getInitialRecords(t, provider, zone)
-
-	createdRecord := createOrGetRootRecord(t, provider, zone)
-	//Get records
-	postCreatedRecords, err := provider.GetRecords(context.TODO(), zone)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if len(postCreatedRecords) != len(initialRecords)+1 {
-		t.Errorf("Additional record not created")
-	}
-
-	t.Logf("Created record: \n%v\n", createdRecord)
-
-	updatedTestValue := "updated-test-value"
-	// Update record
-	records := []libdns.Record{
-		libdns.CNAME{
-			Name:   "@",
-			TTL:    time.Duration(600 * time.Second),
-			Target: updatedTestValue,
-		},
-	}
-	updatedRecords, err := provider.SetRecords(context.TODO(), zone, records)
-
-	if err != nil {
-		t.Error(err)
-	}
-
-	if len(updatedRecords) != 1 {
-		t.Logf("Incorrect amount of records changed")
-	}
-
-	t.Logf("Updated root record: \n%v\n", updatedRecords[0])
-
-	deleteRecords, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{createdRecord})
-	if err != nil {
-		t.Error(err)
-	}
-
-	if len(deleteRecords) != 1 {
-		t.Errorf("Deleted incorrect amount of records %d", len(deleteRecords))
-	}
-
-	t.Logf("Deleted record: \n%v\n", deleteRecords[0])
-}
-
-func TestProvider_UpdateRecordsById(t *testing.T) {
-	provider, zone := getProvider(t)
-
-	//Get records
-	initialRecords := getInitialRecords(t, provider, zone)
-
-	ttl := time.Duration(600 * time.Second)
-	testFullName := "libdns_test_record"
-
-	//Create record
-	_, err := createOrGetTestRecord(t, provider, zone)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	updatedTestValue := "updated-test-value"
-	// Update record
-	updatedRecords, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{
+	testCases := []libdns.Record{
 		libdns.TXT{
-			Name: testFullName,
-			TTL:  ttl,
-			Text: updatedTestValue,
+			Name: "libdns.sub-append",
+			TTL:  600 * time.Second,
+			Text: "libdns_test_append_sub_txt",
 		},
-	})
-
-	if err != nil {
-		t.Error(err)
-	}
-
-	if len(updatedRecords) != 1 {
-		t.Logf("Incorrect amount of records changed")
-	}
-
-	t.Logf("Updated record: \n%v\n", updatedRecords[0])
-
-	//Get records
-	postUpdatedRecords, err := provider.GetRecords(context.TODO(), zone)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if len(postUpdatedRecords) != len(initialRecords)+1 {
-		t.Errorf("Additional record created instead of updating existing. Started with: %d, now has: %d", len(initialRecords), len(postUpdatedRecords))
-	}
-}
-
-func TestProvider_UpdateRecordsByLookup(t *testing.T) {
-	provider, zone := getProvider(t)
-
-	//Get records
-	initialRecords := getInitialRecords(t, provider, zone)
-
-	ttl := time.Duration(600 * time.Second)
-	testFullName := "libdns_test_record"
-
-	//Create record
-	_, err := createOrGetTestRecord(t, provider, zone)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	updatedTestValue := "updated-test-value-by-lookup"
-	// Update record
-	updatedRecords, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{
-		libdns.TXT{
-			Name: testFullName,
-			TTL:  ttl,
-			Text: updatedTestValue,
+		libdns.Address{
+			Name: "libdns-address-append",
+			TTL:  600 * time.Second,
+			IP:   netip.MustParseAddr("1.1.1.1"),
 		},
-	})
-
-	if err != nil {
-		t.Error(err)
 	}
 
-	if len(updatedRecords) != 1 {
-		t.Logf("Incorrect amount of records changed")
+	if modifyRoot {
+		testCases = append(testCases, libdns.TXT{
+			Name: "@",
+			TTL:  600 * time.Second,
+			Text: "libdns_test_append_root_txt",
+		})
+	} else {
+		t.Log("Skipping root record modification")
 	}
 
-	t.Logf("Updated record: \n%v\n", updatedRecords[0])
+	// Delete records before modifying them.
+	_, _ = provider.DeleteRecords(context.TODO(), zone, testCases)
 
-	//Get records
-	postUpdatedRecords, err := provider.GetRecords(context.TODO(), zone)
-	if err != nil {
-		t.Error(err)
+	for index, expectedRecord := range testCases {
+		t.Run(expectedRecord.RR().Type, func(t *testing.T) {
+			if index > 0 {
+				time.Sleep(1 * time.Second)
+			}
+
+			records, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{expectedRecord})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(records) != 1 {
+				t.Fatal("Incorrect amount of records appended")
+			}
+
+			t.Logf("Appended record: \n%v\n", records[0])
+		})
 	}
 
-	if len(postUpdatedRecords) != len(initialRecords)+1 {
-		t.Errorf("Additional record created instead of updating existing. Started with: %d, now has: %d", len(initialRecords), len(postUpdatedRecords))
-	}
+	_, _ = provider.DeleteRecords(context.TODO(), zone, testCases)
 }
 
 func TestProvider_DeleteRecords(t *testing.T) {
 	provider, zone := getProvider(t)
 
-	//Create record
-	createdRecord, err := createOrGetTestRecord(t, provider, zone)
-
-	if err != nil {
-		t.Error(err)
-		return
+	expectedRecord := libdns.TXT{
+		Name: "libdns_delete",
+		TTL:  600 * time.Second,
+		Text: "libdns_test_delete",
 	}
 
+	records, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{expectedRecord})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(records) != 1 {
+		t.Fatal("Incorrect amount of records created")
+	}
+
+	t.Logf("Created record: \n%v\n", records[0])
+
 	// Delete record
-	deleteRecords, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{*createdRecord})
+	deleteRecords, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{expectedRecord})
 
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	if len(deleteRecords) != 1 {
-		t.Errorf("Deleted incorrect amount of records %d", len(deleteRecords))
+		t.Fatalf("Deleted incorrect amount of records %d", len(deleteRecords))
 	}
 
 	t.Logf("Deleted record: \n%v\n", deleteRecords[0])
