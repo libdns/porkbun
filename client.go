@@ -111,7 +111,7 @@ func MakeApiRequest[T any](endpoint string, body io.Reader, responseType T) (T, 
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		err = errors.New("Invalid http response status, " + string(bodyBytes) + "for endpoint " + endpoint)
+		err = errors.New("Invalid http response status, " + string(bodyBytes) + " for endpoint " + endpoint)
 		return responseType, err
 	}
 
