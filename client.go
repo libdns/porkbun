@@ -99,7 +99,7 @@ func (p *Provider) getZones(_ context.Context) ([]libdns.Zone, error) {
 	}
 
 	if response.Status != "SUCCESS" {
-		return nil, errors.New(fmt.Sprintf("Invalid response status %s", response.Status))
+		return nil, fmt.Errorf("Invalid response status %s", response.Status)
 	}
 
 	var zones []libdns.Zone
