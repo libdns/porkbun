@@ -241,3 +241,22 @@ func TestProvider_DeleteRecords(t *testing.T) {
 
 	t.Logf("Deleted record: \n%v\n", deleteRecords[0])
 }
+
+func TestProvider_ListZones(t *testing.T) {
+	provider, _ := getProvider(t)
+
+	domains, err := provider.ListZones(context.TODO())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(domains) == 0 {
+		t.Fatal("No domains found")
+	}
+
+	for _, domain := range domains {
+		t.Logf("Domain: %s\n", domain)
+	}
+	t.Logf("Found %d domains\n", len(domains))
+}

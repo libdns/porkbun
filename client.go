@@ -85,6 +85,35 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 	return createdRecords, nil
 }
 
+func (p *Provider) getZones(_ context.Context) ([]libdns.Zone, error) {
+	credentials := p.getCredentials()
+
+	reqJson, err := json.Marshal(credentials)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := MakeApiRequest("/domain/listAll", bytes.NewReader(reqJson), pkbnDomainResponse{})
+	if err != nil {
+		return nil, err
+	}
+
+	if response.Status != "SUCCESS" {
+		return nil, errors.New(fmt.Sprintf("Invalid response status %s", response.Status))
+	}
+
+	var zones []libdns.Zone
+
+	for _, zone := range response.Domains {
+		asZone := libdns.Zone{
+			Name: zone.Domain,
+		}
+		zones = append(zones, asZone)
+	}
+
+	return zones, nil
+}
+
 func MakeApiRequest[T any](endpoint string, body io.Reader, responseType T) (T, error) {
 	client := http.Client{}
 
