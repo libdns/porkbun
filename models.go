@@ -24,6 +24,7 @@ type pkbnDomain struct {
 
 type pkbnRecord struct {
 	Content string `json:"content"`
+	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Notes   string `json:"notes"`
 	Prio    string `json:"prio"`
