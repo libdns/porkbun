@@ -242,6 +242,58 @@ func TestProvider_DeleteRecords(t *testing.T) {
 	t.Logf("Deleted record: \n%v\n", deleteRecords[0])
 }
 
+func TestProvider_DeleteRecords_KeepsOtherValues(t *testing.T) {
+	provider, zone := getProvider(t)
+
+	keep := libdns.TXT{
+		Name: "libdns_delete_value",
+		TTL:  600 * time.Second,
+		Text: "libdns_test_delete_keep",
+	}
+	remove := libdns.TXT{
+		Name: "libdns_delete_value",
+		TTL:  600 * time.Second,
+		Text: "libdns_test_delete_remove",
+	}
+
+	// Remove leftovers from earlier runs.
+	_, _ = provider.DeleteRecords(context.TODO(), zone, []libdns.Record{keep, remove})
+	t.Cleanup(func() {
+		_, _ = provider.DeleteRecords(context.TODO(), zone, []libdns.Record{keep, remove})
+	})
+
+	if _, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{keep, remove}); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := provider.DeleteRecords(context.TODO(), zone, []libdns.Record{remove})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 1 || deleted[0].RR().Data != remove.Text {
+		t.Fatalf("Deleted %v, want only %q", deleted, remove.Text)
+	}
+
+	records, err := provider.GetRecords(context.TODO(), zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept, removed bool
+	for _, record := range records {
+		rr := record.RR()
+		if rr.Name == keep.Name && rr.Type == "TXT" {
+			kept = kept || rr.Data == keep.Text
+			removed = removed || rr.Data == remove.Text
+		}
+	}
+	if !kept {
+		t.Errorf("Record %q with the same name was deleted", keep.Text)
+	}
+	if removed {
+		t.Errorf("Record %q was not deleted", remove.Text)
+	}
+}
+
 func TestProvider_ListZones(t *testing.T) {
 	provider, _ := getProvider(t)
 

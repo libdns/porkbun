@@ -85,6 +85,33 @@ func (p *Provider) updateRecords(_ context.Context, zone string, records []libdn
 	return createdRecords, nil
 }
 
+// getMatchingRecords returns the records with the name and type of r, and with
+// its value unless that is empty.
+func (p *Provider) getMatchingRecords(r libdns.Record, zone string) ([]pkbnRecord, error) {
+	rr := r.RR()
+	trimmedZone := LibdnsZoneToPorkbunDomain(zone)
+	trimmedName := LibdnsNameToPorkbunName(rr.Name, zone)
+
+	credentialJson, err := json.Marshal(p.getCredentials())
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := fmt.Sprintf("/dns/retrieveByNameType/%s/%s/%s", trimmedZone, rr.Type, trimmedName)
+	response, err := MakeApiRequest(endpoint, bytes.NewReader(credentialJson), pkbnRecordsResponse{})
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []pkbnRecord
+	for _, rec := range response.Records {
+		if rr.Data == "" || rec.Content == rr.Data {
+			matches = append(matches, rec)
+		}
+	}
+	return matches, nil
+}
+
 func (p *Provider) getZones(_ context.Context) ([]libdns.Zone, error) {
 	credentials := p.getCredentials()
 

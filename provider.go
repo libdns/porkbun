@@ -138,8 +138,10 @@ func (p *Provider) DeleteRecords(_ context.Context, zone string, records []libdn
 	var deletedRecords []libdns.Record
 
 	for _, record := range records {
-		var queuedDeletes []libdns.Record
-		queuedDeletes = append(queuedDeletes, record)
+		queuedDeletes, err := p.getMatchingRecords(record, zone)
+		if err != nil {
+			return deletedRecords, err
+		}
 
 		reqJson, err := json.Marshal(credentials)
 		if err != nil {
@@ -147,13 +149,17 @@ func (p *Provider) DeleteRecords(_ context.Context, zone string, records []libdn
 		}
 
 		for _, recordToDelete := range queuedDeletes {
-			rr := recordToDelete.RR()
-			trimmedName := LibdnsNameToPorkbunName(rr.Name, zone)
-			_, err = MakeApiRequest(fmt.Sprintf("/dns/deleteByNameType/%s/%s/%s", trimmedZone, rr.Type, trimmedName), bytes.NewReader(reqJson), pkbnResponseStatus{})
+			_, err = MakeApiRequest(fmt.Sprintf("/dns/delete/%s/%s", trimmedZone, recordToDelete.ID), bytes.NewReader(reqJson), pkbnResponseStatus{})
 			if err != nil {
 				return deletedRecords, err
 			}
-			deletedRecords = append(deletedRecords, recordToDelete)
+
+			deletedRecord, err := recordToDelete.toLibdnsRecord(zone)
+			if err != nil {
+				// toLibdnsRecord doesn't support every record type.
+				deletedRecord = record
+			}
+			deletedRecords = append(deletedRecords, deletedRecord)
 		}
 	}
 
